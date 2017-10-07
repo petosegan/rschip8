@@ -127,6 +127,7 @@ struct Chip8 {
     draw_flag: bool,
     pc: usize, // program counter
     sp: usize, // stack pointer
+    ma: usize, // memory address
 }
 
 impl Chip8 {
@@ -139,14 +140,17 @@ impl Chip8 {
                 keys: [false; NUM_KEYS],
                 display: [false; DISPSIZE],
                 draw_flag: false,
-                pc: 0,
+                pc: 0x200,
                 sp: 0,
+                ma: 0,
             }
     }
     pub fn load(&mut self, filename: &str) {
         unimplemented!();
     }
     pub fn emulate_cycle(&mut self) {
+        self.draw_flag = false;
+
         let opcode = self.fetch_opcode();
         let op = decode_opcode(opcode);
         self.execute_op(op);
@@ -161,47 +165,133 @@ impl Chip8 {
         unimplemented!();
     }
 
-    fn fetch_opcode(&mut self) -> u16 {
-        let opcode = ((self.memory[self.pc] as u16) << 8) | (self.memory[self.pc + 1] as u16);
-        self.pc += 2;
-        return opcode;
+    fn fetch_opcode(&self) -> u16 {
+        ((self.memory[self.pc] as u16) << 8) | (self.memory[self.pc + 1] as u16)
     }
     fn execute_op(&mut self, op: Chip8Op) {
         match op {
-            Chip8Op::DisplayClear => {},
-            Chip8Op::Return => {},
-            Chip8Op::Jump(addr) => {},
-            Chip8Op::Call(addr) => {},
-            Chip8Op::CmpEqualConst(x, c) => {},
-            Chip8Op::CmpNotEqualConst(x, c) => {},
-            Chip8Op::CmpEqualReg(x, y) => {},
-            Chip8Op::SetRegConst(x, c) => {},
-            Chip8Op::AddConstReg(x, c) => {},
-            Chip8Op::SetRegReg(x, y) => {},
-            Chip8Op::BitOpOr(x, y) => {},
-            Chip8Op::BitOpAnd(x, y) => {},
-            Chip8Op::BitOpXor(x, y) => {},
-            Chip8Op::MathOpAdd(x, y) => {},
-            Chip8Op::MathOpSub(x, y) => {},
-            Chip8Op::BitOpShiftRight(x, y) => {},
-            Chip8Op::MathOpSubNeg(x, y) => {},
-            Chip8Op::BitOpShiftLeft(x, y) => {},
-            Chip8Op::CmpNotEqualReg(x, y) => {},
-            Chip8Op::SetMemoryAddress(addr) => {},
-            Chip8Op::JumpPlus(addr) => {},
-            Chip8Op::Random(x, mask) => {},
-            Chip8Op::DrawSprite(x, y, h) => {},
-            Chip8Op::KeyPressed(x) => {},
-            Chip8Op::KeyNotPressed(x) => {},
-            Chip8Op::GetDelay(x) => {},
-            Chip8Op::GetKey(x) => {},
-            Chip8Op::SetDelay(c) => {},
-            Chip8Op::SetSound(c) => {},
-            Chip8Op::AddMemoryAddress(x) => {},
-            Chip8Op::GetSprite(x) => {},
-            Chip8Op::BinaryCoding(x) => {},
-            Chip8Op::RegisterDump(x) => {},
-            Chip8Op::RegisterLoad(x) => {},
+            Chip8Op::DisplayClear => {
+                self.display = [false; DISPSIZE];
+                self.pc += 2;
+            },
+            Chip8Op::Return => {
+                self.pc = self.stack[self.sp] as usize;
+                self.sp -= 1;
+            },
+            Chip8Op::Jump(addr) => {
+                self.pc = addr as usize;
+            },
+            Chip8Op::Call(addr) => {
+                self.sp += 1;
+                self.stack[self.sp] = self.pc as u16 + 2;
+                self.pc = addr as usize;
+            },
+            Chip8Op::CmpEqualConst(x, c) => {
+                if self.registers[x as usize] == c { self.pc += 4; }
+                else { self.pc += 2; }
+            },
+            Chip8Op::CmpNotEqualConst(x, c) => {
+                if self.registers[x as usize] != c { self.pc += 4; }
+                else { self.pc += 2; }
+            },
+            Chip8Op::CmpEqualReg(x, y) => {
+                if self.registers[x as usize] == self.registers[y as usize] { self.pc += 4; }
+                else { self.pc += 2; }
+            },
+            Chip8Op::SetRegConst(x, c) => {
+                self.registers[x as usize] = c;
+                self.pc += 2;
+            },
+            Chip8Op::AddConstReg(x, c) => {
+                self.registers[x as usize] += c;
+                self.pc += 2;
+            },
+            Chip8Op::SetRegReg(x, y) => {
+                self.registers[x as usize] = self.registers[y as usize];
+                self.pc += 2;
+            },
+            Chip8Op::BitOpOr(x, y) => {
+                self.registers[x as usize] = self.registers[x as usize] | self.registers[y as usize];
+                self.pc += 2;
+            },
+            Chip8Op::BitOpAnd(x, y) => {
+                self.registers[x as usize] = self.registers[x as usize] & self.registers[y as usize];
+                self.pc += 2;
+            },
+            Chip8Op::BitOpXor(x, y) => {
+                self.registers[x as usize] = self.registers[x as usize] ^ self.registers[y as usize];
+                self.pc += 2;
+            },
+            Chip8Op::MathOpAdd(x, y) => {
+                self.registers[x as usize] = self.registers[x as usize] + self.registers[y as usize];
+                self.pc += 2;
+            },
+            Chip8Op::MathOpSub(x, y) => {
+                self.registers[x as usize] = self.registers[x as usize] - self.registers[y as usize];
+                self.pc += 2;
+            },
+            Chip8Op::BitOpShiftRight(x, y) => {
+                let lsb = self.registers[y as usize] & 0x01;
+                self.registers[x as usize] = self.registers[y as usize] >> 1;
+                self.registers[y as usize] = self.registers[y as usize] >> 1;
+                self.registers[0x0F] = lsb;
+                self.pc += 2;
+            },
+            Chip8Op::MathOpSubNeg(x, y) => {
+                self.registers[x as usize] = self.registers[y as usize] - self.registers[x as usize];
+                self.pc += 2;
+            },
+            Chip8Op::BitOpShiftLeft(x, y) => {
+                let msb = self.registers[y as usize] & 0x80;
+                self.registers[x as usize] = self.registers[y as usize] << 1;
+                self.registers[y as usize] = self.registers[y as usize] << 1;
+                self.registers[0x0F] = msb;
+                self.pc += 2;
+            },
+            Chip8Op::CmpNotEqualReg(x, y) => {
+                if self.registers[x as usize] != self.registers[y as usize] { self.pc += 4; }
+                else { self.pc += 2; }
+            },
+            Chip8Op::SetMemoryAddress(addr) => {
+                self.ma = addr as usize;
+                self.pc += 2;
+            },
+            Chip8Op::JumpPlus(addr) => {
+                self.pc = (addr + self.registers[0x00] as u16) as usize;
+            },
+            Chip8Op::Random(x, mask) => {unimplemented!()},
+            Chip8Op::DrawSprite(x, y, h) => {unimplemented!()},
+            Chip8Op::KeyPressed(x) => {
+                if self.keys[self.registers[x as usize] as usize] { self.pc += 4; }
+                else { self.pc += 2; }
+            },
+            Chip8Op::KeyNotPressed(x) => {
+                if !self.keys[self.registers[x as usize] as usize] { self.pc += 4; }
+                else { self.pc += 2; }
+            },
+            Chip8Op::GetDelay(x) => {
+                self.registers[x as usize] = self.delay_timer;
+                self.pc += 2;
+            },
+            Chip8Op::GetKey(x) => {
+                unimplemented!();
+            },
+            Chip8Op::SetDelay(c) => {
+                self.delay_timer = c;
+                self.pc += 2;
+            },
+            Chip8Op::SetSound(c) => {
+                self.sound_timer = c;
+                self.pc += 2;
+            },
+            Chip8Op::AddMemoryAddress(x) => {
+                self.ma += self.registers[x as usize] as usize;
+                self.pc += 2;
+            },
+            Chip8Op::GetSprite(x) => {unimplemented!()},
+            Chip8Op::BinaryCoding(x) => {unimplemented!()},
+            Chip8Op::RegisterDump(x) => {unimplemented!()},
+            Chip8Op::RegisterLoad(x) => {unimplemented!()},
         }
     }
 }
