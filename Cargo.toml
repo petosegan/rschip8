@@ -1,0 +1,6 @@
+[package]
+name = "rschip8"
+version = "0.1.0"
+authors = ["Will Turner <rwturner17@gmail.com>"]
+
+[dependencies]
