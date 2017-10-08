@@ -13,6 +13,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
+use std::{thread, time};
 
 const MEMSIZE: usize = 4096;
 const DISPWIDTH: usize = 64;
@@ -21,6 +22,7 @@ const DISPSIZE: usize = DISPWIDTH * DISPHEIGHT;
 const STACKSIZE: usize = 16;
 const NUM_REGS: usize = 16;
 const NUM_KEYS: usize = 16;
+const PERIOD_US: u32 = 3000;
 
 const FONTSET: [u8; 80] =
 [ 
@@ -217,7 +219,7 @@ impl Chip8 {
         }
     }
     pub fn emulate_cycle(&mut self, 
-                output_stream: &mut termion::raw::RawTerminal<std::io::Stdout>,
+                output_stream: &mut std::io::Stdout,
                 input_stream: std::io::Stdin) {
         self.draw_flag = false;
 
@@ -228,13 +230,16 @@ impl Chip8 {
         if self.delay_timer > 0 { self.delay_timer -= 1; }
         if self.sound_timer > 0 {
             self.sound_timer -= 1;
-            if self.sound_timer == 0 { beep(output_stream); }
+            if self.sound_timer == 0 { 
+                //beep(output_stream); 
+            }
         }
     }
     fn key_on(&mut self, key: usize) {
         self.keys[key] = true;
     }
-    pub fn set_keys(&mut self, stream: std::io::Stdin) {
+    // return true to kill the program
+    pub fn set_keys(&mut self, stream: std::io::Stdin) -> bool {
         self.keys = [false; NUM_KEYS];
         for c in stream.keys() {
             match c.unwrap() {
@@ -254,9 +259,12 @@ impl Chip8 {
                 Key::Char('f') => { self.key_on(0xD); break; },
                 Key::Char('g') => { self.key_on(0xE); break; },
                 Key::Char('h') => { self.key_on(0xF); break; },
+                Key::Ctrl('q') => { return true; }
                 _ => {break;},
             }
+            return false;
         }
+        return false;
     }
     fn fetch_opcode(&mut self) -> u16 {
         let opcode = ((self.memory[self.pc] as u16) << 8) | (self.memory[self.pc + 1] as u16);
@@ -267,6 +275,7 @@ impl Chip8 {
         self.pc -= 2;
     }
     fn execute_op(&mut self, op: Chip8Op, stream: std::io::Stdin) {
+        // println!("{:?}", op);
         match op {
             Chip8Op::DisplayClear => {
                 self.display = [false; DISPSIZE];
@@ -300,7 +309,7 @@ impl Chip8 {
                 self.registers[x] = c;
             },
             Chip8Op::AddConstReg(x, c) => {
-                self.registers[x] += c;
+                self.registers[x] = self.registers[x].wrapping_add(c);
             },
             Chip8Op::SetRegReg(x, y) => {
                 self.registers[x] = self.registers[y];
@@ -315,10 +324,14 @@ impl Chip8 {
                 self.registers[x] = self.registers[x] ^ self.registers[y];
             },
             Chip8Op::MathOpAdd(x, y) => {
-                self.registers[x] = self.registers[x] + self.registers[y];
+                let (result, overflow) = self.registers[x].overflowing_add(self.registers[y]);
+                self.registers[x] = result;
+                self.registers[0xF] = if overflow { 0x1 } else { 0x0 };
             },
             Chip8Op::MathOpSub(x, y) => {
-                self.registers[x] = self.registers[x] - self.registers[y];
+                let (result, underflow) = self.registers[x].overflowing_sub(self.registers[y]);
+                self.registers[x] = result;
+                self.registers[0xF] = if underflow { 0x0 } else { 0x1 };
             },
             Chip8Op::BitOpShiftRight(x, y) => {
                 let lsb = self.registers[y] & 0x01;
@@ -327,7 +340,9 @@ impl Chip8 {
                 self.registers[0x0F] = lsb;
             },
             Chip8Op::MathOpSubNeg(x, y) => {
-                self.registers[x] = self.registers[y] - self.registers[x];
+                let (result, underflow) = self.registers[y].overflowing_sub(self.registers[x]);
+                self.registers[x] = result;
+                self.registers[0xF] = if underflow { 0x0 } else { 0x1 };
             },
             Chip8Op::BitOpShiftLeft(x, y) => {
                 let msb = self.registers[y] & 0x80;
@@ -349,17 +364,18 @@ impl Chip8 {
                 self.registers[x] = random::<u8>() & mask;
             },
             Chip8Op::DrawSprite(x, y, h) => {
+                self.draw_flag = true;
                 let left = self.registers[x] as usize;
                 let top = self.registers[y] as usize;
                 let mut collision = false;
                 for row in 0..(h as usize) {
                     let sprite_row = self.memory[self.ma + row];
                     for offset in 0..8 {
-                        let sprite_bit = ((0x1 << offset) & sprite_row) > 0;
+                        let sprite_bit = ((0x80 >> offset) & sprite_row) > 0;
                         let pixel_index = (top + row) * DISPWIDTH + (left + offset);
-                        let pixel_val = self.display[pixel_index];
+                        let pixel_val = self.display[pixel_index % DISPSIZE];
                         if pixel_val && sprite_bit { collision = true; }
-                        self.display[pixel_index] = sprite_bit ^ pixel_val;
+                        self.display[pixel_index % DISPSIZE] = sprite_bit ^ pixel_val;
                     }
                 }
                 if collision {
@@ -415,7 +431,7 @@ impl Chip8 {
             Chip8Op::BinaryCoding(x) => {
                 self.memory[self.ma] = (x / 100) as u8;
                 self.memory[self.ma + 1] = ((x / 10) % 10) as u8;
-                self.memory[self.ma + 2] = (x % 10) as u8;
+                self.memory[self.ma + 2] = ((x % 100) % 10) as u8;
             },
             Chip8Op::RegisterDump(x) => {
                 for i in 0..x {
@@ -433,19 +449,24 @@ impl Chip8 {
     }
 }
 
-fn draw_graphics(stream: &mut termion::raw::RawTerminal<std::io::Stdout>,
+fn draw_graphics(stream: &mut std::io::Stdout,
                  display: [bool; DISPSIZE]) {
+    write!(stream, "{}{}{}", clear::All,
+                            termion::cursor::Goto(1, 1),
+                            termion::cursor::Hide).unwrap();
+    stream.flush().unwrap();
     for row in 0..DISPHEIGHT {
         let mut this_row = String::new();
         for col in 0..DISPWIDTH {
             if display[row * DISPWIDTH + col] {
-                this_row.push_str("\u{7FFF}");
+                this_row.push_str("\u{2588}\u{2588}");
             } else {
-                this_row.push_str(" ");
+                this_row.push_str("  ");
             }
         }
-        writeln!(stream, "{}{}", clear::All, this_row).unwrap();
+        write!(stream, "{}\n\r", this_row).unwrap();
     }
+    stream.flush().unwrap();
 }
 
 fn beep(_: &mut termion::raw::RawTerminal<std::io::Stdout>) {
@@ -460,6 +481,8 @@ fn main() {
     chip8.load("games/PONG");
     draw_graphics(&mut stdout, chip8.display);
 
+    let sleep_duration = time::Duration::new(0, PERIOD_US * 1000);
+
     loop {
         let get_keys_stdin = stdin();
 
@@ -470,7 +493,10 @@ fn main() {
         }
 
         let set_keys_stdin = stdin();
-        // chip8.set_keys(set_keys_stdin);
+
+        thread::sleep(sleep_duration);
+        let kill = chip8.set_keys(set_keys_stdin);
+        if kill { break; }
     }
 }
 
