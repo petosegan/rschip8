@@ -5,3 +5,4 @@ authors = ["Will Turner <rwturner17@gmail.com>"]
 
 [dependencies]
 rand = "0.3"
+termion = "1"

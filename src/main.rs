@@ -1,6 +1,13 @@
 // based on http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
 
 extern crate rand;
+extern crate termion;
+
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+use termion::clear;
+use std::io::{Write, stdout, stdin};
 use rand::random;
 
 const MEMSIZE: usize = 4096;
@@ -183,21 +190,47 @@ impl Chip8 {
     pub fn load(&mut self, filename: &str) {
         unimplemented!();
     }
-    pub fn emulate_cycle(&mut self) {
+    pub fn emulate_cycle(&mut self, 
+                output_stream: &mut termion::raw::RawTerminal<std::io::Stdout>,
+                input_stream: std::io::Stdin) {
         self.draw_flag = false;
 
         let opcode = self.fetch_opcode();
         let op = decode_opcode(opcode);
-        self.execute_op(op);
+        self.execute_op(op, input_stream);
 
         if self.delay_timer > 0 { self.delay_timer -= 1; }
         if self.sound_timer > 0 {
             self.sound_timer -= 1;
-            if self.sound_timer == 0 { beep(); }
+            if self.sound_timer == 0 { beep(output_stream); }
         }
     }
-    pub fn set_keys(&mut self) {
-        unimplemented!();
+    fn key_on(&mut self, key: usize) {
+        self.keys[key] = true;
+    }
+    pub fn set_keys(&mut self, stream: std::io::Stdin) {
+        self.keys = [false; NUM_KEYS];
+        for c in stream.keys() {
+            match c.unwrap() {
+                Key::Left      => { self.key_on(0x4); break; },
+                Key::Up        => { self.key_on(0x2); break; },
+                Key::Right     => { self.key_on(0x6); break; },
+                Key::Down      => { self.key_on(0x8); break; },
+                Key::Char('q') => { self.key_on(0x0); break; },
+                Key::Char('w') => { self.key_on(0x1); break; },
+                Key::Char('e') => { self.key_on(0x3); break; },
+                Key::Char('r') => { self.key_on(0x5); break; },
+                Key::Char('t') => { self.key_on(0x7); break; },
+                Key::Char('y') => { self.key_on(0x9); break; },
+                Key::Char('a') => { self.key_on(0xA); break; },
+                Key::Char('s') => { self.key_on(0xB); break; },
+                Key::Char('d') => { self.key_on(0xC); break; },
+                Key::Char('f') => { self.key_on(0xD); break; },
+                Key::Char('g') => { self.key_on(0xE); break; },
+                Key::Char('h') => { self.key_on(0xF); break; },
+                _ => {break;},
+            }
+        }
     }
     fn fetch_opcode(&mut self) -> u16 {
         let opcode = ((self.memory[self.pc] as u16) << 8) | (self.memory[self.pc + 1] as u16);
@@ -207,7 +240,7 @@ impl Chip8 {
     fn no_advance(&mut self) {
         self.pc -= 2;
     }
-    fn execute_op(&mut self, op: Chip8Op) {
+    fn execute_op(&mut self, op: Chip8Op, stream: std::io::Stdin) {
         match op {
             Chip8Op::DisplayClear => {
                 self.display = [false; DISPSIZE];
@@ -319,7 +352,27 @@ impl Chip8 {
                 self.registers[x] = self.delay_timer;
             },
             Chip8Op::GetKey(x) => {
-                unimplemented!();
+                for c in stream.keys() {
+                    match c.unwrap() {
+                        Key::Left      => { self.registers[x] = 0x4; break; },
+                        Key::Up        => { self.registers[x] = 0x2; break; },
+                        Key::Right     => { self.registers[x] = 0x6; break; },
+                        Key::Down      => { self.registers[x] = 0x8; break; },
+                        Key::Char('q') => { self.registers[x] = 0x0; break; },
+                        Key::Char('w') => { self.registers[x] = 0x1; break; },
+                        Key::Char('e') => { self.registers[x] = 0x3; break; },
+                        Key::Char('r') => { self.registers[x] = 0x5; break; },
+                        Key::Char('t') => { self.registers[x] = 0x7; break; },
+                        Key::Char('y') => { self.registers[x] = 0x9; break; },
+                        Key::Char('a') => { self.registers[x] = 0xA; break; },
+                        Key::Char('s') => { self.registers[x] = 0xB; break; },
+                        Key::Char('d') => { self.registers[x] = 0xC; break; },
+                        Key::Char('f') => { self.registers[x] = 0xD; break; },
+                        Key::Char('g') => { self.registers[x] = 0xE; break; },
+                        Key::Char('h') => { self.registers[x] = 0xF; break; },
+                        _ => {},
+                    }
+                }
             },
             Chip8Op::SetDelay(c) => {
                 self.delay_timer = c;
@@ -354,28 +407,43 @@ impl Chip8 {
     }
 }
 
-fn draw_graphics(display: [bool; DISPSIZE]) {
-    unimplemented!();
+fn draw_graphics(stream: &mut termion::raw::RawTerminal<std::io::Stdout>,
+                 display: [bool; DISPSIZE]) {
+    for row in 0..DISPHEIGHT {
+        let mut this_row = String::new();
+        for col in 0..DISPWIDTH {
+            if display[row * DISPWIDTH + col] {
+                this_row.push_str("\u{7FFF}");
+            } else {
+                this_row.push_str(" ");
+            }
+        }
+        writeln!(stream, "{}{}", clear::All, this_row).unwrap();
+    }
 }
 
-fn beep() {
-    unimplemented!();
+fn beep(_: &mut termion::raw::RawTerminal<std::io::Stdout>) {
+    panic!("bell not implemented in termion");
 }
 
 fn main() {
+    let mut stdout = stdout().into_raw_mode().unwrap();
 
     let mut chip8 = Chip8::new();
     chip8.load_fonts();
     chip8.load("pong");
 
     loop {
-        chip8.emulate_cycle();
+        let get_keys_stdin = stdin();
+
+        chip8.emulate_cycle(&mut stdout, get_keys_stdin);
 
         if chip8.draw_flag {
-            draw_graphics(chip8.display);
+            draw_graphics(&mut stdout, chip8.display);
         }
 
-        chip8.set_keys();
+        let set_keys_stdin = stdin();
+        chip8.set_keys(set_keys_stdin);
     }
 }
 
