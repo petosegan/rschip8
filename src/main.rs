@@ -9,6 +9,10 @@ use termion::raw::IntoRawMode;
 use termion::clear;
 use std::io::{Write, stdout, stdin};
 use rand::random;
+use std::error::Error;
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
 
 const MEMSIZE: usize = 4096;
 const DISPWIDTH: usize = 64;
@@ -188,7 +192,29 @@ impl Chip8 {
         }
     }
     pub fn load(&mut self, filename: &str) {
-        unimplemented!();
+        let path = Path::new(filename);
+        let display = path.display();
+
+        // Open the path in read-only mode, returns `io::Result<File>`
+        let mut file = match File::open(&path) {
+            // The `description` method of `io::Error` returns a string that
+            // describes the error
+            Err(why) => panic!("couldn't open {}: {}", display,
+                                                       why.description()),
+            Ok(file) => file,
+        };
+
+        // Read the file contents into a Vec<u8>, returns `io::Result<usize>`
+        let mut buffer = Vec::new();
+        match file.read_to_end(&mut buffer) {
+            Err(why) => panic!("couldn't read {}: {}", display,
+                                                       why.description()),
+            Ok(_) => {println!("loaded {}", display)},
+        }
+
+        for (index, byte) in buffer.iter().enumerate() {
+            self.memory[0x200 + index] = *byte;
+        }
     }
     pub fn emulate_cycle(&mut self, 
                 output_stream: &mut termion::raw::RawTerminal<std::io::Stdout>,
@@ -431,7 +457,8 @@ fn main() {
 
     let mut chip8 = Chip8::new();
     chip8.load_fonts();
-    chip8.load("pong");
+    chip8.load("games/PONG");
+    draw_graphics(&mut stdout, chip8.display);
 
     loop {
         let get_keys_stdin = stdin();
@@ -443,7 +470,7 @@ fn main() {
         }
 
         let set_keys_stdin = stdin();
-        chip8.set_keys(set_keys_stdin);
+        // chip8.set_keys(set_keys_stdin);
     }
 }
 
