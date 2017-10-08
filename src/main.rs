@@ -4,10 +4,32 @@ extern crate rand;
 use rand::random;
 
 const MEMSIZE: usize = 4096;
-const DISPSIZE: usize = 32 * 64;
+const DISPWIDTH: usize = 64;
+const DISPHEIGHT: usize = 32;
+const DISPSIZE: usize = DISPWIDTH * DISPHEIGHT;
 const STACKSIZE: usize = 16;
 const NUM_REGS: usize = 16;
 const NUM_KEYS: usize = 16;
+
+const FONTSET: [u8; 80] =
+[ 
+  0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+  0x20, 0x60, 0x20, 0x20, 0x70, // 1
+  0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+  0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+  0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+  0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+  0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+  0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+  0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+  0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+  0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+  0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+  0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+  0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+  0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+  0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+];
 
 #[derive(Debug, PartialEq)]
 enum Chip8Op {
@@ -71,10 +93,12 @@ fn last_nibble(opcode: u16) -> u8 {
     (opcode & 0x000F) as u8
 }
 
+#[allow(non_snake_case)]
 fn aXYb(opcode: u16, a: u8, b: u8) -> bool {
     first_nibble(opcode) == a && last_nibble(opcode) == b
 }
 
+#[allow(non_snake_case)]
 fn aXbb(opcode: u16, a: u8, b: u8) -> bool {
     first_nibble(opcode) == a && nn_byte(opcode) == b
 }
@@ -150,6 +174,11 @@ impl Chip8 {
                 sp: 0,
                 ma: 0,
             }
+    }
+    pub fn load_fonts(&mut self) {
+        for i in 0..80 {
+            self.memory[i] = FONTSET[i];
+        }
     }
     pub fn load(&mut self, filename: &str) {
         unimplemented!();
@@ -261,7 +290,24 @@ impl Chip8 {
                 self.registers[x] = random::<u8>() & mask;
             },
             Chip8Op::DrawSprite(x, y, h) => {
-                unimplemented!()
+                let left = self.registers[x] as usize;
+                let top = self.registers[y] as usize;
+                let mut collision = false;
+                for row in 0..(h as usize) {
+                    let sprite_row = self.memory[self.ma + row];
+                    for offset in 0..8 {
+                        let sprite_bit = ((0x1 << offset) & sprite_row) > 0;
+                        let pixel_index = (top + row) * DISPWIDTH + (left + offset);
+                        let pixel_val = self.display[pixel_index];
+                        if pixel_val && sprite_bit { collision = true; }
+                        self.display[pixel_index] = sprite_bit ^ pixel_val;
+                    }
+                }
+                if collision {
+                    self.registers[0xF] = 0x1;
+                } else {
+                    self.registers[0xF] = 0x0;
+                }
             },
             Chip8Op::KeyPressed(x) => {
                 if self.keys[self.registers[x] as usize] { self.pc += 2; }
@@ -284,10 +330,26 @@ impl Chip8 {
             Chip8Op::AddMemoryAddress(x) => {
                 self.ma += self.registers[x] as usize;
             },
-            Chip8Op::GetSprite(x) => {unimplemented!()},
-            Chip8Op::BinaryCoding(x) => {unimplemented!()},
-            Chip8Op::RegisterDump(x) => {unimplemented!()},
-            Chip8Op::RegisterLoad(x) => {unimplemented!()},
+            Chip8Op::GetSprite(x) => {
+                self.ma = (5 * self.registers[x]) as usize;
+            },
+            Chip8Op::BinaryCoding(x) => {
+                self.memory[self.ma] = (x / 100) as u8;
+                self.memory[self.ma + 1] = ((x / 10) % 10) as u8;
+                self.memory[self.ma + 2] = (x % 10) as u8;
+            },
+            Chip8Op::RegisterDump(x) => {
+                for i in 0..x {
+                    self.memory[self.ma] = self.registers[i];
+                    self.ma += 1;
+                }
+            },
+            Chip8Op::RegisterLoad(x) => {
+                for i in 0..x {
+                    self.registers[i] = self.memory[self.ma];
+                    self.ma += 1;
+                }
+            },
         }
     }
 }
@@ -303,6 +365,7 @@ fn beep() {
 fn main() {
 
     let mut chip8 = Chip8::new();
+    chip8.load_fonts();
     chip8.load("pong");
 
     loop {
