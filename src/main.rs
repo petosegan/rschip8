@@ -245,7 +245,7 @@ impl Chip8 {
         self.keys[key] = true;
     }
     // return true to kill the program
-    pub fn set_keys(&mut self, mut stream: &mut std::io::Bytes<termion::AsyncReader>) -> bool {
+    pub fn set_keys(&mut self, stream: &mut std::io::Bytes<termion::AsyncReader>) -> bool {
         let next_ch = stream.next();
         if let Some(Ok(ch)) = next_ch {
             // print!("{}\n\r", ch);
@@ -453,13 +453,13 @@ impl Chip8 {
                 self.memory[self.ma + 2] = ((x % 100) % 10) as u8;
             },
             Chip8Op::RegisterDump(x) => {
-                for i in 0..x {
+                for i in 0..x+1 {
                     self.memory[self.ma] = self.registers[i];
                     self.ma += 1;
                 }
             },
             Chip8Op::RegisterLoad(x) => {
-                for i in 0..x {
+                for i in 0..x+1 {
                     self.registers[i] = self.memory[self.ma];
                     self.ma += 1;
                 }
@@ -565,7 +565,7 @@ fn main() {
         })
         .level(logging_level)
         .chain(stdout())
-        .apply();
+        .apply().unwrap();
     
     info!("INFO is printing.");
     debug!("DEBUG is printing.");
