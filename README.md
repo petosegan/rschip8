@@ -19,7 +19,6 @@ To quit the emulator, press 'x'.
 * better control over terminal
   * aspect ratio of grid
   * remove horizontal gutters
-* refactor so that you can switch IO methods easily
 * implement a piston or SDL2 display/keypad
 
 ## Useful Resources
