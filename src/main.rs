@@ -22,7 +22,7 @@ fn main() {
 
     let mut opts = getopts::Options::new();
     opts.reqopt("g", "", "path to game rom", "GAME");
-    opts.optflag("c", "", "clock speed (Hz)");
+    opts.optopt("c", "", "clock speed (Hz)", "CLOCK_SPEED");
     opts.optflag("", "vv", "print opcodes and disable display");
     opts.optflag("h", "help", "print this help message");
 
