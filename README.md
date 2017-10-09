@@ -6,7 +6,7 @@ Unlike most of the Rust CHIP-8 emulators out there, this one displays directly i
 ## USAGE
 
 ```
-cargo run -- -g *path_to_game* [-c *clock_speed_in_hz*]
+cargo run -- -g path_to_game [-c clock_speed_in_hz]
 ```
 
 The arrow keys work for most games. The CHIP-8 has a hex keypad, with 2, 4, 6, and 8 typically used for directions. I've mapped the other keys to 'qwerty' and 'asdfgh'. The default clock speed is 500 Hz.
