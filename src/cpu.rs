@@ -405,3 +405,23 @@ impl Chip8 {
         if self.trace_flag { print!("\tRegisters after: {:?}\n\r", self.registers) };
     }
 }
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_first_nibble() {
+        assert_eq!(first_nibble(0x1234), 0x1);
+    }
+    #[test]
+    fn test_x_nibble() {
+        assert_eq!(x_nibble(0x1234), 0x2);
+    }
+    #[test]
+    fn decode_jump() {
+        assert_eq!(decode_opcode(0x1456), Chip8Op::Jump(0x0456));
+    }
+}
