@@ -56,40 +56,37 @@ fn main() {
         None => 500.0,
     };
 
-    let mut stdout = get_output_stream();
-
     let mut chip8 = Chip8::new();
     chip8.trace_flag = matches.opt_present("vv");
     chip8.load(game_path.as_str());
-    if !chip8.trace_flag { draw_graphics(&mut stdout, chip8.display) };
 
     let clock_period_ns = (1.0 / clock_speed * 1_000_000_000.0).floor() as u32;
     let sleep_duration = time::Duration::new(0, clock_period_ns);
 
-    let mut async_input = get_input_stream();
+    let mut frontend = TermionFrontend::new();
 
     loop {
 
         chip8.emulate_cycle();
 
         if chip8.wait_for_key_flag {
-            if let Some(key) = get_key(&mut async_input) {
+            if let Some(key) = frontend.get_key() {
                 chip8.give_key(key);
                 chip8.wait_for_key_flag = false;
             } else { break; }
         }
 
         if chip8.beep_flag {
-            beep(&mut stdout);
+            frontend.beep();
         }
 
         if chip8.draw_flag && !chip8.trace_flag {
-            draw_graphics(&mut stdout, chip8.display);
+            frontend.draw_graphics(chip8.display);
         }
 
         thread::sleep(sleep_duration);
 
-        if let Some(keys_pressed) = check_keys(&mut async_input) {
+        if let Some(keys_pressed) = frontend.check_keys() {
             chip8.set_keys(keys_pressed);
         } else { break; }
     }
