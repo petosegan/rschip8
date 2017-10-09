@@ -1,13 +1,11 @@
 // based on http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
-#[macro_use]
-extern crate log;
-extern crate fern;
 extern crate rand;
 extern crate termion;
 extern crate getopts;
 
 use termion::async_stdin;
 use termion::raw::IntoRawMode;
+use termion::clear;
 use std::io::{Write, stdout};
 use std::env;
 use rand::random;
@@ -171,6 +169,8 @@ struct Chip8 {
     keys: [bool; NUM_KEYS],
     display: [bool; DISPSIZE],
     draw_flag: bool,
+    trace_flag: bool,
+    kill_flag: bool,
     pc: usize, // program counter
     sp: usize, // stack pointer
     ma: usize, // memory address
@@ -186,6 +186,8 @@ impl Chip8 {
                 keys: [false; NUM_KEYS],
                 display: [false; DISPSIZE],
                 draw_flag: false,
+                trace_flag: false,
+                kill_flag: false,
                 pc: 0x200,
                 sp: 0,
                 ma: 0,
@@ -241,8 +243,7 @@ impl Chip8 {
     fn key_on(&mut self, key: usize) {
         self.keys[key] = true;
     }
-    // return true to kill the program
-    pub fn set_keys(&mut self, stream: &mut std::io::Bytes<termion::AsyncReader>) -> bool {
+    pub fn set_keys(&mut self, stream: &mut std::io::Bytes<termion::AsyncReader>) {
         let next_ch = stream.next();
         if let Some(Ok(ch)) = next_ch {
             // print!("{}\n\r", ch);
@@ -273,12 +274,10 @@ impl Chip8 {
                 b'f' => { self.key_on(0xD); },
                 b'g' => { self.key_on(0xE); },
                 b'h' => { self.key_on(0xF); },
-                b'p' => { return true; }
+                b'x' => { self.kill_flag = true; }
                 _ => {},
             }
         }
-
-        return false;
     }
     fn fetch_opcode(&mut self) -> u16 {
         let opcode = ((self.memory[self.pc] as u16) << 8) | (self.memory[self.pc + 1] as u16);
@@ -289,7 +288,7 @@ impl Chip8 {
         self.pc -= 2;
     }
     fn execute_op(&mut self, op: Chip8Op, stream: &mut std::io::Bytes<termion::AsyncReader>) {
-        // print!("{}{:?}\n\r", clear::CurrentLine, op);
+        if self.trace_flag { print!("{}{:?}\n\r", clear::CurrentLine, op) };
         // trace!("{:?}\n\r", op);
         match op {
             Chip8Op::DisplayClear => {
@@ -324,10 +323,14 @@ impl Chip8 {
                 self.registers[x] = c;
             },
             Chip8Op::AddConstReg(x, c) => {
+                if self.trace_flag { print!("\tRegisters before: {:?}\n\r", self.registers); }
                 self.registers[x] = self.registers[x].wrapping_add(c);
+                if self.trace_flag { print!("\tRegisters after: {:?}\n\r", self.registers); }
             },
             Chip8Op::SetRegReg(x, y) => {
+                if self.trace_flag { print!("\tRegisters before: {:?}\n\r", self.registers); }
                 self.registers[x] = self.registers[y];
+                if self.trace_flag { print!("\tRegisters after: {:?}\n\r", self.registers); }
             },
             Chip8Op::BitOpOr(x, y) => {
                 self.registers[x] = self.registers[x] | self.registers[y];
@@ -339,9 +342,11 @@ impl Chip8 {
                 self.registers[x] = self.registers[x] ^ self.registers[y];
             },
             Chip8Op::MathOpAdd(x, y) => {
+                if self.trace_flag { print!("\tRegisters before: {:?}\n\r", self.registers); }
                 let (result, overflow) = self.registers[x].overflowing_add(self.registers[y]);
                 self.registers[x] = result;
                 self.registers[0xF] = if overflow { 0x1 } else { 0x0 };
+                if self.trace_flag { print!("\tRegisters after: {:?}\n\r", self.registers);            }
             },
             Chip8Op::MathOpSub(x, y) => {
                 let (result, underflow) = self.registers[x].overflowing_sub(self.registers[y]);
@@ -369,7 +374,9 @@ impl Chip8 {
                 if self.registers[x] != self.registers[y] { self.pc += 2; }
             },
             Chip8Op::SetMemoryAddress(addr) => {
+                if self.trace_flag { print!("\tMemory before: {}\n\r", self.ma);}
                 self.ma = addr;
+                if self.trace_flag { print!("\tMemory after: {}\n\r", self.ma);}
             },
             Chip8Op::JumpPlus(addr) => {
                 self.no_advance();
@@ -379,6 +386,7 @@ impl Chip8 {
                 self.registers[x] = random::<u8>() & mask;
             },
             Chip8Op::DrawSprite(x, y, h) => {
+                if self.trace_flag { print!("\tMemory at: {}\n\r", self.ma);}
                 self.draw_flag = true;
                 let left = self.registers[x] as usize;
                 let top = self.registers[y] as usize;
@@ -461,6 +469,7 @@ impl Chip8 {
                             b'f' => { self.registers[x] = 0xD; break; },
                             b'g' => { self.registers[x] = 0xE; break; },
                             b'h' => { self.registers[x] = 0xF; break; },
+                            b'x' => { self.kill_flag = true; break; }
                             _ => {},
                         }
                     }
@@ -473,15 +482,17 @@ impl Chip8 {
                 self.sound_timer = c;
             },
             Chip8Op::AddMemoryAddress(x) => {
+                if self.trace_flag { print!("\tMemory before: {}\n\r", self.ma); }
                 self.ma += self.registers[x] as usize;
+                if self.trace_flag { print!("\tMemory after: {}\n\r", self.ma); }
             },
             Chip8Op::GetSprite(x) => {
                 self.ma = (5 * self.registers[x]) as usize;
             },
             Chip8Op::BinaryCoding(x) => {
-                self.memory[self.ma] = (x / 100) as u8;
-                self.memory[self.ma + 1] = ((x / 10) % 10) as u8;
-                self.memory[self.ma + 2] = ((x % 100) % 10) as u8;
+                self.memory[self.ma] = (self.registers[x] / 100) as u8;
+                self.memory[self.ma + 1] = ((self.registers[x] / 10) % 10) as u8;
+                self.memory[self.ma + 2] = ((self.registers[x] % 100) % 10) as u8;
             },
             Chip8Op::RegisterDump(x) => {
                 for i in 0..x+1 {
@@ -546,9 +557,7 @@ fn main() {
 
     let mut opts = getopts::Options::new();
     opts.reqopt("g", "", "path to game rom", "GAME");
-    opts.optflag("q", "quiet", "quiet mode. No log messages will be printed");
-    opts.optflag("v", "", "print DEBUG messages");
-    opts.optflag("", "vv", "print TRACE messages");
+    opts.optflag("", "vv", "print opcodes and disable display");
     opts.optflag("h", "help", "print this help message");
 
     let matches = match opts.parse(&args[1..]) {
@@ -570,44 +579,19 @@ fn main() {
         print_usage(&program, opts);
         return;
     }
-    let mut logging_level = log::LogLevelFilter::Info;
-    if matches.opt_present("v") {
-        logging_level = log::LogLevelFilter::Debug;
-    }
-    if matches.opt_present("vv") {
-        logging_level = log::LogLevelFilter::Trace;
-    }
-    if matches.opt_present("q") {
-        logging_level = log::LogLevelFilter::Off;
-    }
-
+    
     let game_path = match matches.opt_str("g") {
         Some(s) => s,
         None => "./games/BRIX".to_string(),
     };
 
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}] {}",
-                record.level(),
-                message
-            ))
-        })
-        .level(logging_level)
-        .chain(stdout())
-        .apply().unwrap();
-    
-    info!("INFO is printing.");
-    debug!("DEBUG is printing.");
-    trace!("TRACE is printing.");
-
     let mut stdout = stdout().into_raw_mode().unwrap();
 
     let mut chip8 = Chip8::new();
+    chip8.trace_flag = matches.opt_present("vv");
     chip8.load_fonts();
     chip8.load(game_path.as_str());
-    draw_graphics(&mut stdout, chip8.display);
+    if !chip8.trace_flag { draw_graphics(&mut stdout, chip8.display) };
 
     let sleep_duration = time::Duration::new(0, PERIOD_US * 1000);
 
@@ -617,14 +601,14 @@ fn main() {
 
         chip8.emulate_cycle(&mut stdout, &mut async_input);
 
-        if chip8.draw_flag {
+        if chip8.draw_flag && !chip8.trace_flag {
             draw_graphics(&mut stdout, chip8.display);
         }
 
         thread::sleep(sleep_duration);
 
-        let kill = chip8.set_keys(&mut async_input);
-        if kill { break; }
+        chip8.set_keys(&mut async_input);
+        if chip8.kill_flag { break; }
     }
 }
 

@@ -2,7 +2,6 @@
 This is a CHIP-8 emulator written in Rust.
 
 ## TODO
-* fix bcd so that scores are shown
 * add sound to emulate sound timer
 * key mappings
 * better control over terminal
