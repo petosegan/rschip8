@@ -6,11 +6,9 @@ extern crate rand;
 extern crate termion;
 extern crate getopts;
 
-use termion::event::Key;
-use termion::input::TermRead;
 use termion::async_stdin;
 use termion::raw::IntoRawMode;
-use std::io::{Write, stdout, stdin};
+use std::io::{Write, stdout};
 use std::env;
 use rand::random;
 use std::error::Error;
@@ -19,7 +17,6 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::{thread, time};
 use getopts::Options;
-
 
 const MEMSIZE: usize = 4096;
 const DISPWIDTH: usize = 64;
@@ -226,7 +223,7 @@ impl Chip8 {
     }
     pub fn emulate_cycle(&mut self, 
                 output_stream: &mut std::io::Stdout,
-                input_stream: std::io::Stdin) {
+                input_stream: &mut std::io::Bytes<termion::AsyncReader>) {
         self.draw_flag = false;
 
         let opcode = self.fetch_opcode();
@@ -291,8 +288,9 @@ impl Chip8 {
     fn no_advance(&mut self) {
         self.pc -= 2;
     }
-    fn execute_op(&mut self, op: Chip8Op, stream: std::io::Stdin) {
-        // print!("{:?}\n\r", op);
+    fn execute_op(&mut self, op: Chip8Op, stream: &mut std::io::Bytes<termion::AsyncReader>) {
+        // print!("{}{:?}\n\r", clear::CurrentLine, op);
+        // trace!("{:?}\n\r", op);
         match op {
             Chip8Op::DisplayClear => {
                 self.display = [false; DISPSIZE];
@@ -413,25 +411,58 @@ impl Chip8 {
                 self.registers[x] = self.delay_timer;
             },
             Chip8Op::GetKey(x) => {
-                for c in stream.keys() {
-                    match c.unwrap() {
-                        Key::Left      => { self.registers[x] = 0x4; break; },
-                        Key::Up        => { self.registers[x] = 0x2; break; },
-                        Key::Right     => { self.registers[x] = 0x6; break; },
-                        Key::Down      => { self.registers[x] = 0x8; break; },
-                        Key::Char('q') => { self.registers[x] = 0x0; break; },
-                        Key::Char('w') => { self.registers[x] = 0x1; break; },
-                        Key::Char('e') => { self.registers[x] = 0x3; break; },
-                        Key::Char('r') => { self.registers[x] = 0x5; break; },
-                        Key::Char('t') => { self.registers[x] = 0x7; break; },
-                        Key::Char('y') => { self.registers[x] = 0x9; break; },
-                        Key::Char('a') => { self.registers[x] = 0xA; break; },
-                        Key::Char('s') => { self.registers[x] = 0xB; break; },
-                        Key::Char('d') => { self.registers[x] = 0xC; break; },
-                        Key::Char('f') => { self.registers[x] = 0xD; break; },
-                        Key::Char('g') => { self.registers[x] = 0xE; break; },
-                        Key::Char('h') => { self.registers[x] = 0xF; break; },
-                        _ => {},
+                // The nested match statements make the escape sequence
+                // prefix for arrow keys optional. This is a kludge to
+                // deal with loss of characters from asynchronous stdin.
+                loop {
+                    let next_ch = stream.next();
+                    if let Some(Ok(ch)) = next_ch {
+                        // print!("{}\n\r", ch);
+                        match ch {
+                            b'\x1B' => {
+                                if let Some(Ok(b'[')) = stream.next() {
+                                    if let Some(Ok(ch2)) = stream.next() {
+                                        // print!("{}\n\r", ch2);
+                                        match ch2 {
+                                            65 => { self.registers[x] = 0x2; break;},
+                                            68 => { self.registers[x] = 0x4; break;},
+                                            67 => { self.registers[x] = 0x6; break;},
+                                            66 => { self.registers[x] = 0x8; break;},
+                                            _ => {},
+                                        }
+                                    }
+                                }
+                            }
+                            b'[' => {
+                                if let Some(Ok(ch2)) = stream.next() {
+                                    // print!("{}\n\r", ch2);
+                                    match ch2 {
+                                        65 => { self.registers[x] = 0x2; break;},
+                                        68 => { self.registers[x] = 0x4; break;},
+                                        67 => { self.registers[x] = 0x6; break;},
+                                        66 => { self.registers[x] = 0x8; break;},
+                                        _ => {},
+                                    }
+                                }
+                            }
+                            65 => { self.registers[x] = 0x2; break;},
+                            68 => { self.registers[x] = 0x4; break;},
+                            67 => { self.registers[x] = 0x6; break;},
+                            66 => { self.registers[x] = 0x8; break;},
+                            b'q' => { self.registers[x] = 0x0; break; },
+                            b'w' => { self.registers[x] = 0x1; break; },
+                            b'e' => { self.registers[x] = 0x3; break; },
+                            b'r' => { self.registers[x] = 0x5; break; },
+                            b't' => { self.registers[x] = 0x7; break; },
+                            b'y' => { self.registers[x] = 0x9; break; },
+                            b'a' => { self.registers[x] = 0xA; break; },
+                            b's' => { self.registers[x] = 0xB; break; },
+                            b'd' => { self.registers[x] = 0xC; break; },
+                            b'f' => { self.registers[x] = 0xD; break; },
+                            b'g' => { self.registers[x] = 0xE; break; },
+                            b'h' => { self.registers[x] = 0xF; break; },
+                            _ => {},
+                        }
                     }
                 }
             },
@@ -584,7 +615,7 @@ fn main() {
 
     loop {
 
-        chip8.emulate_cycle(&mut stdout, stdin());
+        chip8.emulate_cycle(&mut stdout, &mut async_input);
 
         if chip8.draw_flag {
             draw_graphics(&mut stdout, chip8.display);
