@@ -6,3 +6,6 @@ authors = ["Will Turner <rwturner17@gmail.com>"]
 [dependencies]
 rand = "0.3"
 termion = "1"
+getopts = "0.2"
+log = "0.3"
+fern = "0.4"

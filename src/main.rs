@@ -1,19 +1,25 @@
 // based on http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/
-
+#[macro_use]
+extern crate log;
+extern crate fern;
 extern crate rand;
 extern crate termion;
+extern crate getopts;
 
 use termion::event::Key;
 use termion::input::TermRead;
+use termion::async_stdin;
 use termion::raw::IntoRawMode;
-use termion::clear;
 use std::io::{Write, stdout, stdin};
+use std::env;
 use rand::random;
 use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::{thread, time};
+use getopts::Options;
+
 
 const MEMSIZE: usize = 4096;
 const DISPWIDTH: usize = 64;
@@ -231,7 +237,7 @@ impl Chip8 {
         if self.sound_timer > 0 {
             self.sound_timer -= 1;
             if self.sound_timer == 0 { 
-                //beep(output_stream); 
+                beep(output_stream); 
             }
         }
     }
@@ -239,31 +245,42 @@ impl Chip8 {
         self.keys[key] = true;
     }
     // return true to kill the program
-    pub fn set_keys(&mut self, stream: std::io::Stdin) -> bool {
-        self.keys = [false; NUM_KEYS];
-        for c in stream.keys() {
-            match c.unwrap() {
-                Key::Left      => { self.key_on(0x4); break; },
-                Key::Up        => { self.key_on(0x2); break; },
-                Key::Right     => { self.key_on(0x6); break; },
-                Key::Down      => { self.key_on(0x8); break; },
-                Key::Char('q') => { self.key_on(0x0); break; },
-                Key::Char('w') => { self.key_on(0x1); break; },
-                Key::Char('e') => { self.key_on(0x3); break; },
-                Key::Char('r') => { self.key_on(0x5); break; },
-                Key::Char('t') => { self.key_on(0x7); break; },
-                Key::Char('y') => { self.key_on(0x9); break; },
-                Key::Char('a') => { self.key_on(0xA); break; },
-                Key::Char('s') => { self.key_on(0xB); break; },
-                Key::Char('d') => { self.key_on(0xC); break; },
-                Key::Char('f') => { self.key_on(0xD); break; },
-                Key::Char('g') => { self.key_on(0xE); break; },
-                Key::Char('h') => { self.key_on(0xF); break; },
-                Key::Ctrl('q') => { return true; }
-                _ => {break;},
+    pub fn set_keys(&mut self, mut stream: &mut std::io::Bytes<termion::AsyncReader>) -> bool {
+        let next_ch = stream.next();
+        if let Some(Ok(ch)) = next_ch {
+            // print!("{}\n\r", ch);
+            match ch {
+                b'\x1B' => {
+                    if let Some(Ok(b'[')) = stream.next() {
+                        if let Some(Ok(ch2)) = stream.next() {
+                            // print!("{}\n\r", ch2);
+                            match ch2 {
+                                65 => { self.key_on(0x2); },
+                                68 => { self.key_on(0x4); },
+                                67 => { self.key_on(0x6); },
+                                66 => { self.key_on(0x8); },
+                                _ => {},
+                            }
+                        }
+                    }
+                }
+                b'q' => { self.key_on(0x0); },
+                b'w' => { self.key_on(0x1); },
+                b'e' => { self.key_on(0x3); },
+                b'r' => { self.key_on(0x5); },
+                b't' => { self.key_on(0x7); },
+                b'y' => { self.key_on(0x9); },
+                b'a' => { self.key_on(0xA); },
+                b's' => { self.key_on(0xB); },
+                b'd' => { self.key_on(0xC); },
+                b'f' => { self.key_on(0xD); },
+                b'g' => { self.key_on(0xE); },
+                b'h' => { self.key_on(0xF); },
+                b'p' => { return true; }
+                _ => {},
             }
-            return false;
         }
+
         return false;
     }
     fn fetch_opcode(&mut self) -> u16 {
@@ -275,7 +292,7 @@ impl Chip8 {
         self.pc -= 2;
     }
     fn execute_op(&mut self, op: Chip8Op, stream: std::io::Stdin) {
-        // println!("{:?}", op);
+        // print!("{:?}\n\r", op);
         match op {
             Chip8Op::DisplayClear => {
                 self.display = [false; DISPSIZE];
@@ -386,9 +403,11 @@ impl Chip8 {
             },
             Chip8Op::KeyPressed(x) => {
                 if self.keys[self.registers[x] as usize] { self.pc += 2; }
+                self.keys[self.registers[x] as usize] = false;
             },
             Chip8Op::KeyNotPressed(x) => {
                 if !self.keys[self.registers[x] as usize] { self.pc += 2; }
+                self.keys[self.registers[x] as usize] = false;
             },
             Chip8Op::GetDelay(x) => {
                 self.registers[x] = self.delay_timer;
@@ -451,10 +470,9 @@ impl Chip8 {
 
 fn draw_graphics(stream: &mut std::io::Stdout,
                  display: [bool; DISPSIZE]) {
-    write!(stream, "{}{}{}", clear::All,
+    write!(stream, "{}{}",
                             termion::cursor::Goto(1, 1),
                             termion::cursor::Hide).unwrap();
-    stream.flush().unwrap();
     for row in 0..DISPHEIGHT {
         let mut this_row = String::new();
         for col in 0..DISPWIDTH {
@@ -466,36 +484,105 @@ fn draw_graphics(stream: &mut std::io::Stdout,
         }
         write!(stream, "{}\n\r", this_row).unwrap();
     }
-    stream.flush().unwrap();
 }
 
-fn beep(_: &mut termion::raw::RawTerminal<std::io::Stdout>) {
+fn beep(_: &mut std::io::Stdout) {
     panic!("bell not implemented in termion");
 }
 
+fn print_usage(program: &str, opts: Options) {
+    print!("{}", opts.usage(&brief(&program)));
+}
+
+fn brief<ProgramName>(program: ProgramName) -> String
+        where ProgramName: std::fmt::Display {
+    return format!("Usage: {} -g GAME [(-q|-v|--vv)]", program);
+}
+
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let program = args[0].clone();
+
+    let mut opts = getopts::Options::new();
+    opts.reqopt("g", "", "path to game rom", "GAME");
+    opts.optflag("q", "quiet", "quiet mode. No log messages will be printed");
+    opts.optflag("v", "", "print DEBUG messages");
+    opts.optflag("", "vv", "print TRACE messages");
+    opts.optflag("h", "help", "print this help message");
+
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => { m }
+        Err(f) => {let message = format!("{}\n{}\n",
+                                  f.to_string(),
+                                  opts.usage(&brief(&args[0])));
+            if let Err(err) = write!(std::io::stderr(), "{}", message) {
+                panic!("Failed to write to standard error: {}\n\
+                       Error encountered while trying to log the \
+                       following message: \"{}\"",
+                       err,
+                       message);
+            }
+            std::process::exit(1);
+        }
+    };
+    if matches.opt_present("h") {
+        print_usage(&program, opts);
+        return;
+    }
+    let mut logging_level = log::LogLevelFilter::Info;
+    if matches.opt_present("v") {
+        logging_level = log::LogLevelFilter::Debug;
+    }
+    if matches.opt_present("vv") {
+        logging_level = log::LogLevelFilter::Trace;
+    }
+    if matches.opt_present("q") {
+        logging_level = log::LogLevelFilter::Off;
+    }
+
+    let game_path = match matches.opt_str("g") {
+        Some(s) => s,
+        None => "./games/BRIX".to_string(),
+    };
+
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{}] {}",
+                record.level(),
+                message
+            ))
+        })
+        .level(logging_level)
+        .chain(stdout())
+        .apply();
+    
+    info!("INFO is printing.");
+    debug!("DEBUG is printing.");
+    trace!("TRACE is printing.");
+
     let mut stdout = stdout().into_raw_mode().unwrap();
 
     let mut chip8 = Chip8::new();
     chip8.load_fonts();
-    chip8.load("games/PONG");
+    chip8.load(game_path.as_str());
     draw_graphics(&mut stdout, chip8.display);
 
     let sleep_duration = time::Duration::new(0, PERIOD_US * 1000);
 
-    loop {
-        let get_keys_stdin = stdin();
+    let mut async_input = async_stdin().bytes();
 
-        chip8.emulate_cycle(&mut stdout, get_keys_stdin);
+    loop {
+
+        chip8.emulate_cycle(&mut stdout, stdin());
 
         if chip8.draw_flag {
             draw_graphics(&mut stdout, chip8.display);
         }
 
-        let set_keys_stdin = stdin();
-
         thread::sleep(sleep_duration);
-        let kill = chip8.set_keys(set_keys_stdin);
+
+        let kill = chip8.set_keys(&mut async_input);
         if kill { break; }
     }
 }
