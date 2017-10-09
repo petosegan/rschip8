@@ -46,7 +46,7 @@ pub fn draw_graphics(stream: &mut Stdout,
 }
 
 pub fn beep(_: &mut Stdout) {
-    panic!("bell not implemented in termion");
+    //panic!("bell not implemented in termion");
 }
 
 pub fn check_keys(stream: &mut Bytes<termion::AsyncReader>) -> Option<[bool; NUM_KEYS]> {
