@@ -470,11 +470,16 @@ impl Chip8 {
 
 fn draw_graphics(stream: &mut std::io::Stdout,
                  display: [bool; DISPSIZE]) {
-    write!(stream, "{}{}",
-                            termion::cursor::Goto(1, 1),
-                            termion::cursor::Hide).unwrap();
+    write!(stream, "{}{}", termion::cursor::Goto(1, 1),
+                           termion::cursor::Hide).unwrap();
+
+    let mut header = String::new();
+    for _ in 0..DISPWIDTH+2 { header.push_str("##"); }
+    write!(stream, "{}\n\r", header).unwrap();
+
     for row in 0..DISPHEIGHT {
         let mut this_row = String::new();
+        this_row.push_str("##");
         for col in 0..DISPWIDTH {
             if display[row * DISPWIDTH + col] {
                 this_row.push_str("\u{2588}\u{2588}");
@@ -482,8 +487,13 @@ fn draw_graphics(stream: &mut std::io::Stdout,
                 this_row.push_str("  ");
             }
         }
+        this_row.push_str("##");
         write!(stream, "{}\n\r", this_row).unwrap();
     }
+
+    let mut footer = String::new();
+    for _ in 0..DISPWIDTH+2 { footer.push_str("##"); }
+    write!(stream, "{}\n\r", footer).unwrap();
 }
 
 fn beep(_: &mut std::io::Stdout) {
