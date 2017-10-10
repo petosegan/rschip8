@@ -4,6 +4,10 @@ extern crate rschip8;
 use std::io::Write;
 use std::env;
 use std::{thread, time};
+use std::error::Error;
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
 use getopts::Options;
 use rschip8::*;
 
@@ -52,6 +56,26 @@ fn main() {
         None => "./games/BRIX".to_string(),
     };
 
+    let path = Path::new(&game_path);
+    let display = path.display();
+
+    // Open the path in read-only mode, returns `io::Result<File>`
+    let mut file = match File::open(&path) {
+        // The `description` method of `io::Error` returns a string that
+        // describes the error
+        Err(why) => panic!("couldn't open {}: {}", display,
+                                                   why.description()),
+        Ok(file) => file,
+    };
+
+    // Read the file contents into a Vec<u8>, returns `io::Result<usize>`
+    let mut buffer = Vec::new();
+    match file.read_to_end(&mut buffer) {
+        Err(why) => panic!("couldn't read {}: {}", display,
+                                                   why.description()),
+        Ok(_) => {println!("loaded {}", display)},
+    }
+
     let clock_speed = match matches.opt_str("c") {
         Some(s) => s.parse::<f64>().unwrap(),
         None => 500.0,
@@ -59,7 +83,7 @@ fn main() {
 
     let mut chip8 = Chip8::new();
     chip8.trace_flag = matches.opt_present("vv");
-    chip8.load(game_path.as_str());
+    chip8.load(buffer);
 
     let clock_period_ns = (1.0 / clock_speed * 1_000_000_000.0).floor() as u32;
     let sleep_duration = time::Duration::new(0, clock_period_ns);

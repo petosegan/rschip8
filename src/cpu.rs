@@ -1,8 +1,4 @@
 use rand::random;
-use std::error::Error;
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
 use {DISPWIDTH, DISPSIZE, MEMSIZE, STACKSIZE, NUM_KEYS, NUM_REGS};
 
 const FONTSET: [u8; 80] =
@@ -181,27 +177,7 @@ impl Chip8 {
                 ma: 0,
             }
     }
-    pub fn load(&mut self, filename: &str) {
-        let path = Path::new(filename);
-        let display = path.display();
-
-        // Open the path in read-only mode, returns `io::Result<File>`
-        let mut file = match File::open(&path) {
-            // The `description` method of `io::Error` returns a string that
-            // describes the error
-            Err(why) => panic!("couldn't open {}: {}", display,
-                                                       why.description()),
-            Ok(file) => file,
-        };
-
-        // Read the file contents into a Vec<u8>, returns `io::Result<usize>`
-        let mut buffer = Vec::new();
-        match file.read_to_end(&mut buffer) {
-            Err(why) => panic!("couldn't read {}: {}", display,
-                                                       why.description()),
-            Ok(_) => {println!("loaded {}", display)},
-        }
-
+    pub fn load(&mut self, buffer: Vec<u8>) {
         for (index, byte) in buffer.iter().enumerate() {
             self.memory[0x200 + index] = *byte;
         }
