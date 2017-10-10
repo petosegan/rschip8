@@ -3,12 +3,12 @@ extern crate termion;
 use std::io::{Read, Write, stdout, Stdout, Bytes};
 use termion::async_stdin;
 use termion::raw::IntoRawMode;
+use frontend::Frontend;
 
 const DISPWIDTH: usize = 64;
 const DISPHEIGHT: usize = 32;
 const DISPSIZE: usize = DISPWIDTH * DISPHEIGHT;
 const NUM_KEYS: usize = 16;
-
 
 pub struct TermionFrontend {
     output_stream: termion::raw::RawTerminal<Stdout>,
@@ -20,36 +20,43 @@ impl TermionFrontend {
         TermionFrontend{ output_stream: stdout().into_raw_mode().unwrap(),
                          input_stream:  async_stdin().bytes()}
     }
-    pub fn draw_graphics(&mut self, display: [bool; DISPSIZE]) {
+}
+
+impl Frontend for TermionFrontend {
+    fn draw_graphics(&mut self, display: [bool; DISPSIZE]) {
+        let border_tile = "##";
+        let on_tile = "\u{2588}\u{2588}";
+        let off_tile = "  ";
+
         write!(self.output_stream, "{}{}", termion::cursor::Goto(1, 1),
                                termion::cursor::Hide).unwrap();
 
         let mut header = String::new();
-        for _ in 0..DISPWIDTH+2 { header.push_str("##"); }
+        for _ in 0..DISPWIDTH+2 { header.push_str(border_tile); }
         write!(self.output_stream, "{}\n\r", header).unwrap();
 
         for row in 0..DISPHEIGHT {
             let mut this_row = String::new();
-            this_row.push_str("##");
+            this_row.push_str(border_tile);
             for col in 0..DISPWIDTH {
                 if display[row * DISPWIDTH + col] {
-                    this_row.push_str("\u{2588}\u{2588}");
+                    this_row.push_str(on_tile);
                 } else {
-                    this_row.push_str("  ");
+                    this_row.push_str(off_tile);
                 }
             }
-            this_row.push_str("##");
+            this_row.push_str(border_tile);
             write!(self.output_stream, "{}\n\r", this_row).unwrap();
         }
 
         let mut footer = String::new();
-        for _ in 0..DISPWIDTH+2 { footer.push_str("##"); }
+        for _ in 0..DISPWIDTH+2 { footer.push_str(border_tile); }
         write!(self.output_stream, "{}\n\r", footer).unwrap();
     }
-    pub fn beep(&self) {
+    fn beep(&self) {
         //panic!("bell not implemented in termion");
     }
-    pub fn check_keys(&mut self) -> Option<[bool; NUM_KEYS]> {
+    fn check_keys(&mut self) -> Option<[bool; NUM_KEYS]> {
         let mut result = [false; 16];
 
         let next_ch = self.input_stream.next();
@@ -87,7 +94,7 @@ impl TermionFrontend {
 
        Some(result)
     }
-    pub fn get_key(&mut self) -> Option<u8> {
+    fn get_key(&mut self) -> Option<u8> {
         // The nested match statements make the escape sequence
         // prefix for arrow keys optional. This is a kludge to
         // deal with loss of characters from asynchronous stdin.

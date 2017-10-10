@@ -1,7 +1,7 @@
 # rschip8
 This is a CHIP-8 emulator written in Rust.
 
-Unlike most of the Rust CHIP-8 emulators out there, this one displays directly in the terminal, using [Termion](https://github.com/ticki/termion).
+Two frontends are available: SDL2 (default), or terminal display using [Termion](https://github.com/ticki/termion).
 
 ## USAGE
 
@@ -13,9 +13,7 @@ The arrow keys work for most games. The CHIP-8 has a hex keypad, with 2, 4, 6, a
 
 To quit the emulator, press 'x'.
 
-## TODO
-* key mappings
-* implement a piston or SDL2 display/keypad
+To display in the terminal, use the '-t' flag.
 
 ## Useful Resources
 * http://www.multigesture.net/articles/how-to-write-an-emulator-chip-8-interpreter/

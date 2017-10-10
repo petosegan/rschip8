@@ -7,3 +7,4 @@ authors = ["Will Turner <rwturner17@gmail.com>"]
 rand = "0.3"
 termion = "1"
 getopts = "0.2"
+sdl2 = "0.30"

@@ -23,6 +23,7 @@ fn main() {
     let mut opts = getopts::Options::new();
     opts.reqopt("g", "", "path to game rom", "GAME");
     opts.optopt("c", "", "clock speed (Hz)", "CLOCK_SPEED");
+    opts.optflag("t", "", "terminal display");
     opts.optflag("", "vv", "print opcodes and disable display");
     opts.optflag("h", "help", "print this help message");
 
@@ -63,10 +64,16 @@ fn main() {
     let clock_period_ns = (1.0 / clock_speed * 1_000_000_000.0).floor() as u32;
     let sleep_duration = time::Duration::new(0, clock_period_ns);
 
-    let mut frontend = TermionFrontend::new();
+    if matches.opt_present("t") {
+        run_game_loop(chip8, TermionFrontend::new(), sleep_duration);
+    } else {
+        run_game_loop(chip8, SDL2Frontend::new(), sleep_duration);
+    }
+}
 
+fn run_game_loop<T>(mut chip8: Chip8, mut frontend: T, sleep_duration: std::time::Duration)
+    where T: Frontend {
     loop {
-
         chip8.emulate_cycle();
 
         if chip8.wait_for_key_flag {
