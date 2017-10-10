@@ -6,10 +6,8 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use frontend::Frontend;
 
-const DISPWIDTH: u32 = 64;
-const DISPHEIGHT: u32 = 32;
-const DISPSIZE: u32 = DISPWIDTH * DISPHEIGHT;
-const NUM_KEYS: usize = 16;
+use {DISPWIDTH, DISPHEIGHT, DISPSIZE, NUM_KEYS};
+
 const SCALE: u32 = 10;
 
 pub struct SDL2Frontend {
@@ -22,7 +20,7 @@ impl SDL2Frontend {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
 
-        let window = video_subsystem.window("rschip8", DISPWIDTH * SCALE, DISPHEIGHT * SCALE)
+        let window = video_subsystem.window("rschip8", DISPWIDTH as u32 * SCALE, DISPHEIGHT as u32 * SCALE)
             .position_centered()
             .opengl()
             .build()
@@ -39,15 +37,15 @@ impl SDL2Frontend {
 }
 
 impl Frontend for SDL2Frontend {
-    fn draw_graphics(&mut self, display: [bool; DISPSIZE as usize]) {
+    fn draw_graphics(&mut self, display: [bool; DISPSIZE]) {
         self.canvas.set_draw_color(Color::RGB(0, 0, 0));
         self.canvas.clear();
         self.canvas.set_draw_color(Color::RGB(0, 230, 20));
         for y in 0..DISPHEIGHT {
             for x in 0..DISPWIDTH {
-                let this_index = (y * DISPWIDTH + x) as usize;
+                let this_index = y * DISPWIDTH + x;
                 if display[this_index] {
-                    self.canvas.fill_rect(Rect::new((x * SCALE) as i32, (y * SCALE) as i32, SCALE, SCALE)).unwrap();
+                    self.canvas.fill_rect(Rect::new((x * SCALE as usize) as i32, (y * SCALE as usize) as i32, SCALE, SCALE)).unwrap();
                 }
             }
         }

@@ -3,14 +3,7 @@ use std::error::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
-
-const DISPWIDTH: usize = 64;
-const DISPHEIGHT: usize = 32;
-const DISPSIZE: usize = DISPWIDTH * DISPHEIGHT;
-const MEMSIZE: usize = 4096;
-const STACKSIZE: usize = 16;
-const NUM_KEYS: usize = 16;
-const NUM_REGS: usize = 16;
+use {DISPWIDTH, DISPSIZE, MEMSIZE, STACKSIZE, NUM_KEYS, NUM_REGS};
 
 const FONTSET: [u8; 80] =
 [ 

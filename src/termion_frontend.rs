@@ -5,10 +5,7 @@ use termion::async_stdin;
 use termion::raw::IntoRawMode;
 use frontend::Frontend;
 
-const DISPWIDTH: usize = 64;
-const DISPHEIGHT: usize = 32;
-const DISPSIZE: usize = DISPWIDTH * DISPHEIGHT;
-const NUM_KEYS: usize = 16;
+use {DISPWIDTH, DISPHEIGHT, DISPSIZE, NUM_KEYS};
 
 pub struct TermionFrontend {
     output_stream: termion::raw::RawTerminal<Stdout>,

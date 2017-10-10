@@ -1,7 +1,4 @@
-const DISPWIDTH: usize = 64;
-const DISPHEIGHT: usize = 32;
-const DISPSIZE: usize = DISPWIDTH * DISPHEIGHT;
-const NUM_KEYS: usize = 16;
+use {DISPSIZE, NUM_KEYS};
 
 pub trait Frontend {
     fn draw_graphics(&mut self, display: [bool; DISPSIZE]);
